@@ -1,20 +1,17 @@
-import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
 import { PostContent } from '../types';
-import { SYSTEM_PROMPT, RESPONSE_SCHEMA } from '../constants';
 
-const API_KEY = process.env.API_KEY;
-
-if (!API_KEY) {
-  throw new Error("API_KEY environment variable not set");
-}
-
-const ai = new GoogleGenAI({ apiKey: API_KEY });
-
-const fileToBase64 = (file: File): Promise<string> => {
+// Converts a file to a base64 string with its MIME type, ready for JSON transport.
+const fileToBase64 = (file: File): Promise<{ mimeType: string, data: string }> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
-    reader.onload = () => resolve((reader.result as string).split(',')[1]);
+    reader.onload = () => {
+        const result = reader.result as string;
+        resolve({
+            mimeType: file.type,
+            data: result.split(',')[1]
+        });
+    };
     reader.onerror = (error) => reject(error);
   });
 };
@@ -23,47 +20,35 @@ export const generatePostFromRecipe = async (
   text: string,
   images: File[]
 ): Promise<PostContent> => {
-  const model = 'gemini-2.5-flash';
-
-  const imageParts = await Promise.all(
-    images.map(async (image) => {
-      const base64Data = await fileToBase64(image);
-      return {
-        inlineData: {
-          mimeType: image.type,
-          data: base64Data,
-        },
-      };
-    })
+  
+  // Prepare image data to be sent as JSON to our backend function.
+  const imagePayloads = await Promise.all(
+    images.map(fileToBase64)
   );
 
-  const textPart = {
-    text: `Вот текст и/или скриншот рецепта. Извлеки из него номер рецепта и все остальные данные для поста.\n\n${text}`,
-  };
-  
-  const contentParts = [...imageParts, textPart];
-  
   try {
-    const response: GenerateContentResponse = await ai.models.generateContent({
-      model,
-      contents: { parts: contentParts },
-      config: {
-        systemInstruction: SYSTEM_PROMPT,
-        responseMimeType: "application/json",
-        responseSchema: RESPONSE_SCHEMA,
+    // The endpoint for our Netlify function.
+    const response = await fetch('/.netlify/functions/generate-post', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
       },
+      body: JSON.stringify({
+        text,
+        images: imagePayloads,
+      }),
     });
-
-    const jsonString = response.text;
-    const parsedJson = JSON.parse(jsonString);
-
-    if (parsedJson && parsedJson.post_content) {
-      return parsedJson.post_content as PostContent;
-    } else {
-      throw new Error("Invalid JSON structure in AI response.");
+    
+    if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Server responded with ${response.status}`);
     }
+
+    const data: PostContent = await response.json();
+    return data;
+
   } catch (error) {
-    console.error("Error generating content:", error);
+    console.error("Error calling Netlify function:", error);
     if (error instanceof Error) {
         throw new Error(`Failed to generate post: ${error.message}`);
     }
