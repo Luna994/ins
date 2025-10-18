@@ -1,0 +1,5 @@
+{
+  "name": "InstaRecipe AI Post Generator",
+  "description": "An AI-powered application to transform recipe screenshots or text into engaging Instagram posts and send the structured data to Google Sheets.",
+  "requestFramePermissions": []
+}
