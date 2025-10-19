@@ -40,8 +40,22 @@ export const generatePostFromRecipe = async (
     });
     
     if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Server responded with ${response.status}`);
+      let errorToThrow;
+      try {
+          const errorData = await response.json();
+          // If the server sent a structured JSON error, use its message
+          errorToThrow = new Error(errorData.error || `Server responded with status ${response.status}`);
+      } catch (e) {
+          // If the response body is not JSON or empty (e.g., from a timeout),
+          // try to get the raw text.
+          const textError = await response.text();
+          if (textError) {
+              errorToThrow = new Error(`Server responded with status ${response.status}: ${textError}`);
+          } else {
+              errorToThrow = new Error(`Server responded with status ${response.status} and an empty response body. This could be a timeout.`);
+          }
+      }
+      throw errorToThrow;
     }
 
     const data: PostContent = await response.json();
