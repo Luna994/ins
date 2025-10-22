@@ -39,7 +39,7 @@ const SYSTEM_PROMPT = `
 - Упомяни пользу блюда и призови сохранить рецепт.
 
 # Формат результата:
-Твой ответ ДОЛЖЕН БЫТЬ строго в формате JSON, соответствующем предоставленной схеме. Не добавляй никаких приветствий, вступлений или markdown-форматирования (например, звездочек) в значения полей JSON.
+Твой ответ ДОЛЖЕН БЫТЬ строго в формате JSON, соответствующем предоставленной схеме. Не добавляй никаких приветствий, вступлений или markdown-форматирования (например, звездочек) в значения полей JSON. Значения в полях JSON не должны содержать HTML-теги, такие как <br>. Для переноса строк используй исключительно символ новой строки ('\\n').
 
 # Описание полей JSON:
 1.  **Номер**: Номер рецепта из источника.
@@ -129,10 +129,22 @@ const handler: Handler = async (event: HandlerEvent) => {
     const parsedJson = JSON.parse(jsonString);
 
     if (parsedJson && parsedJson.post_content) {
+      const content = parsedJson.post_content;
+
+      // Clean the text fields from any lingering HTML tags or literal newline characters.
+      const cleanText = (text: string | undefined) => {
+        if (!text) return text;
+        // Replace <br> tags with a newline, and replace literal '\\n' with a newline.
+        return text.replace(/<br\s*\/?>/gi, '\n').replace(/\\n/g, '\n');
+      }
+
+      content.Рецепт = cleanText(content.Рецепт);
+      content.Совет = cleanText(content.Совет);
+
       return {
         statusCode: 200,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(parsedJson.post_content),
+        body: JSON.stringify(content),
       };
     } else {
       throw new Error("Invalid JSON structure in AI response.");
