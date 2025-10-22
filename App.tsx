@@ -9,8 +9,10 @@ function App() {
   const [activeTab, setActiveTab] = useState<'text' | 'image'>('text');
   const [text, setText] = useState('');
   const [images, setImages] = useState<File[]>([]);
+  const [extractedText, setExtractedText] = useState(''); // New state for extracted text
   const [postContent, setPostContent] = useState<PostContent | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isExtractingText, setIsExtractingText] = useState(false); // New state for OCR loading
   const [error, setError] = useState<string | null>(null);
   
   const [isSendingToSheet, setIsSendingToSheet] = useState(false);
@@ -26,15 +28,51 @@ function App() {
     }
   }, [sheetStatus]);
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      setImages(Array.from(e.target.files));
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (error) => reject(error);
+    });
+  };
+
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+      setImages([file]);
+      setIsExtractingText(true);
+      setError(null);
+      setExtractedText('');
+
+      try {
+        const base64Image = await fileToBase64(file);
+        const response = await fetch('/.netlify/functions/extract-text-from-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image: base64Image.split(',')[1] }), // Send only base64 data
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to extract text from image.');
+        }
+
+        const data = await response.json();
+        setExtractedText(data.extractedText);
+      } catch (err) {
+        console.error('Error during OCR:', err);
+        setError(err instanceof Error ? err.message : 'Произошла ошибка при извлечении текста.');
+      } finally {
+        setIsExtractingText(false);
+      }
     }
   };
 
   const switchTab = (tab: 'text' | 'image') => {
     setActiveTab(tab);
     setError(null);
+    setExtractedText(''); // Clear extracted text when switching tabs
     if (tab === 'text') {
       setImages([]);
     } else {
@@ -48,8 +86,8 @@ function App() {
       setError('Пожалуйста, введите текст рецепта.');
       return;
     }
-     if (activeTab === 'image' && images.length === 0) {
-      setError('Пожалуйста, загрузите изображение рецепта.');
+     if (activeTab === 'image' && !extractedText.trim()) {
+      setError('Пожалуйста, загрузите изображение или дождитесь извлечения текста.');
       return;
     }
     
@@ -60,8 +98,8 @@ function App() {
 
     try {
       const result = await generatePostFromRecipe(
-        activeTab === 'text' ? text : '',
-        activeTab === 'image' ? images : []
+        activeTab === 'text' ? text : extractedText,
+        [] // Images are now processed by OCR function, so send empty array to generatePostFromRecipe
       );
       setPostContent(result);
     } catch (err) {
@@ -183,28 +221,53 @@ function App() {
               )}
               
               {activeTab === 'image' && (
-                <div>
-                   <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Изображения рецепта
-                  </label>
-                  <label htmlFor="file-upload" className="cursor-pointer mt-2 flex justify-center items-center w-full px-6 py-10 border-2 border-slate-300 border-dashed rounded-lg text-slate-500 hover:bg-slate-100 hover:border-emerald-400 transition">
-                     <div className="text-center">
-                      <UploadIcon className="mx-auto h-12 w-12" />
-                      <p className="mt-2">Перетащите файлы сюда или нажмите для выбора</p>
-                      <p className="text-xs text-slate-400">PNG, JPG</p>
-                      <input id="file-upload" name="file-upload" type="file" multiple className="sr-only" onChange={handleImageChange} accept="image/png, image/jpeg" />
+                <div className="space-y-4">
+                   <div>
+                     <label className="block text-sm font-medium text-slate-700 mb-1">
+                      Изображения рецепта
+                    </label>
+                    <label htmlFor="file-upload" className="cursor-pointer mt-2 flex justify-center items-center w-full px-6 py-10 border-2 border-slate-300 border-dashed rounded-lg text-slate-500 hover:bg-slate-100 hover:border-emerald-400 transition">
+                       <div className="text-center">
+                        <UploadIcon className="mx-auto h-12 w-12" />
+                        <p className="mt-2">Перетащите файлы сюда или нажмите для выбора</p>
+                        <p className="text-xs text-slate-400">PNG, JPG</p>
+                        <input id="file-upload" name="file-upload" type="file" multiple className="sr-only" onChange={handleImageChange} accept="image/png, image/jpeg" />
+                       </div>
+                    </label>
+                    {images.length > 0 && (
+                      <div className="mt-4 text-sm text-slate-600">
+                        <p className="font-semibold">Выбранные файлы:</p>
+                        <ul className="list-disc list-inside">
+                          {images.map((file, index) => (
+                            <li key={index}>{file.name}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                   </div>
+
+                   {isExtractingText && (
+                     <div className="flex justify-center items-center py-4">
+                       <Spinner />
+                       <p className="ml-2 text-slate-600">Извлечение текста...</p>
                      </div>
-                  </label>
-                  {images.length > 0 && (
-                    <div className="mt-4 text-sm text-slate-600">
-                      <p className="font-semibold">Выбранные файлы:</p>
-                      <ul className="list-disc list-inside">
-                        {images.map((file, index) => (
-                          <li key={index}>{file.name}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
+                   )}
+
+                   {extractedText && (
+                     <div>
+                       <label htmlFor="extracted-recipe-text" className="block text-sm font-medium text-slate-700 mb-1">
+                         Извлеченный текст рецепта (можно редактировать)
+                       </label>
+                       <textarea
+                         id="extracted-recipe-text"
+                         rows={5}
+                         value={extractedText}
+                         onChange={(e) => setExtractedText(e.target.value)}
+                         placeholder="Извлеченный текст появится здесь."
+                         className="w-full bg-white px-4 py-2 border border-slate-300 rounded-lg focus:ring-emerald-500 focus:border-emerald-500 transition"
+                       ></textarea>
+                     </div>
+                   )}
                 </div>
               )}
             </div>
@@ -212,10 +275,10 @@ function App() {
             <div className="mt-8">
               <button
                 type="submit"
-                disabled={isLoading}
+                disabled={isLoading || isExtractingText}
                 className="w-full flex items-center justify-center bg-emerald-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-emerald-700 disabled:bg-emerald-300 disabled:cursor-not-allowed transition-colors"
               >
-                {isLoading ? (
+                {(isLoading || isExtractingText) ? (
                   <Spinner />
                 ) : (
                   <>
@@ -229,7 +292,7 @@ function App() {
         </div>
         
         <div className="bg-white p-6 rounded-2xl shadow-lg min-h-[10rem] flex items-center justify-center">
-          {isLoading && <Spinner />}
+          {(isLoading || isExtractingText) && <Spinner />}
           {error && <div className="text-red-500 text-center">{error}</div>}
           {postContent && (
              <div className="w-full space-y-6">
