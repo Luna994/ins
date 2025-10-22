@@ -66,7 +66,11 @@ function App() {
       setPostContent(result);
     } catch (err) {
       if (err instanceof Error) {
-        setError(err.message);
+        if (err.message.includes('504')) {
+          setError('Время ожидания ответа от сервера истекло. Это может случиться со сложными рецептами. Пожалуйста, попробуйте еще раз.');
+        } else {
+          setError(err.message);
+        }
       } else {
         setError('Произошла неизвестная ошибка.');
       }
