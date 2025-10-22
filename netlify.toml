@@ -1,7 +1,1 @@
-[functions]
-  directory = "netlify/functions"
-  timeout = 26
-  external_node_modules = [
-    "module-one",
-    "module-two"
-  ]
+
