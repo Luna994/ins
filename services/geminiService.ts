@@ -39,17 +39,16 @@ export const generatePostFromRecipe = async (
       }),
     });
     
+    const responseBody = await response.text(); // Read body once as text
+
     if (!response.ok) {
-      const responseText = await response.text();
       let errorMessage = `Server responded with status ${response.status}`;
-      // Try to parse the text as JSON to get a more specific error message.
       try {
-        const errorData = JSON.parse(responseText);
-        errorMessage = errorData.error || `${errorMessage}: ${responseText}`;
+        const errorData = JSON.parse(responseBody); // Parse the already read text
+        errorMessage = errorData.error || `${errorMessage}: ${responseBody}`;
       } catch (e) {
-        // If the response body is not JSON, use the raw text.
-        if (responseText) {
-          errorMessage = `${errorMessage}: ${responseText}`;
+        if (responseBody) {
+          errorMessage = `${errorMessage}: ${responseBody}`;
         } else {
           errorMessage = `${errorMessage} and an empty response body. This could be a timeout.`;
         }
@@ -57,8 +56,8 @@ export const generatePostFromRecipe = async (
       throw new Error(errorMessage);
     }
 
-    // If the response was successful, parse it as JSON.
-    const data: PostContent = await response.json();
+    // If the response was successful, parse the already read text as JSON.
+    const data: PostContent = JSON.parse(responseBody);
     return data;
 
   } catch (error) {
