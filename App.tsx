@@ -125,7 +125,7 @@ function App() {
       <main className="max-w-4xl mx-auto p-4 md:p-8">
         <header className="text-center mb-8">
           <h1 className="text-3xl md:text-4xl font-bold text-emerald-700">
-            Генератор постов
+            Генератор постов-рецептов
           </h1>
           <p className="text-slate-500 mt-2">
             для проекта «Вкусно. Просто. Полезно.»
